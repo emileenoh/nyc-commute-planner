@@ -1,0 +1,18 @@
+.subway-map {
+  width: 100%;
+  height: 100vh;
+}
+
+.loading-container,
+.error-container {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.error-message {
+  color: red;
+}
+
