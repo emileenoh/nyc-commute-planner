@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 function parseCSV(filePath: string): string[][] {
   const content = fs.readFileSync(filePath, 'utf-8');
   const lines = content.trim().split('\n');
-  return lines.map(line => {
+  return lines.map((line: string) => {
     // Handle quoted fields that may contain commas
     const result: string[] = [];
     let current = '';
