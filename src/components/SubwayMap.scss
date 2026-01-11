@@ -1,6 +1,21 @@
-.subway-map {
+.subway-map-container {
   width: 100%;
   height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.subway-map-search {
+  padding: 1rem;
+  background-color: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 1;
+}
+
+.subway-map {
+  flex: 1;
+  min-height: 0;
 }
 
 .loading-container,
