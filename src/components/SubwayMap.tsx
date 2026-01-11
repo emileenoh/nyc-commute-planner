@@ -19,6 +19,7 @@ export function SubwayMap() {
   const DEFAULT_TRAVEL_TIME_MINUTES = 30;
   const [travelTimeMinutes, setTravelTimeMinutes] = useState(DEFAULT_TRAVEL_TIME_MINUTES);
   const [isochrones, setIsochrones] = useState<Map<number, GeoJSON.Feature<GeoJSON.Polygon> | null>>(new Map());
+  const [isCalculatingIsochrones, setIsCalculatingIsochrones] = useState(false);
   const { stations, edges, network, loading, error } = useNetworkData();
   
   // Cache for isochrone results: key = "lat_lon_time" (rounded to 15 minutes)
@@ -52,57 +53,66 @@ export function SubwayMap() {
   // Calculate all isochrones from 15 minutes up to the selected time (in 15-minute increments)
   useEffect(() => {
     if (officeLocation && network) {
-      const newIsochrones = new Map<number, GeoJSON.Feature<GeoJSON.Polygon> | null>();
-      const timesToCalculate: number[] = [];
-      
-      // Generate list of times to calculate: 15, 30, 45, ... up to roundedTravelTimeMinutes
-      for (let time = 15; time <= roundedTravelTimeMinutes; time += 15) {
-        timesToCalculate.push(time);
-      }
-
-      // Calculate or retrieve from cache for each time
-      for (const timeMinutes of timesToCalculate) {
-        const cacheKey = `${officeLocation.latitude.toFixed(6)}_${officeLocation.longitude.toFixed(6)}_${timeMinutes}`;
+      // Use setTimeout with a small delay to ensure React renders the loading state
+      const timeoutId = setTimeout(() => {
+        const newIsochrones = new Map<number, GeoJSON.Feature<GeoJSON.Polygon> | null>();
+        const timesToCalculate: number[] = [];
         
-        // Check cache first
-        const cached = isochroneCacheRef.current.get(cacheKey);
-        if (cached !== undefined) {
-          newIsochrones.set(timeMinutes, cached);
-          continue;
+        // Generate list of times to calculate: 15, 30, 45, ... up to roundedTravelTimeMinutes
+        for (let time = 15; time <= roundedTravelTimeMinutes; time += 15) {
+          timesToCalculate.push(time);
         }
 
-        // Calculate if not in cache
-        try {
-          const result = createIsochrone(officeLocation, network, timeMinutes * 60);
-          const polygon = result?.polygon || null;
+        // Calculate or retrieve from cache for each time
+        for (const timeMinutes of timesToCalculate) {
+          const cacheKey = `${officeLocation.latitude.toFixed(6)}_${officeLocation.longitude.toFixed(6)}_${timeMinutes}`;
           
-          // Cache the result
-          isochroneCacheRef.current.set(cacheKey, polygon);
-          
-          // Limit cache size to prevent memory issues (keep last 100 entries)
-          if (isochroneCacheRef.current.size > 100) {
-            const firstKey = isochroneCacheRef.current.keys().next().value;
-            if (firstKey) {
-              isochroneCacheRef.current.delete(firstKey);
+          // Check cache first
+          const cached = isochroneCacheRef.current.get(cacheKey);
+          if (cached !== undefined) {
+            newIsochrones.set(timeMinutes, cached);
+            continue;
+          }
+
+          // Calculate if not in cache
+          try {
+            const result = createIsochrone(officeLocation, network, timeMinutes * 60);
+            const polygon = result?.polygon || null;
+            
+            // Cache the result
+            isochroneCacheRef.current.set(cacheKey, polygon);
+            
+            // Limit cache size to prevent memory issues (keep last 100 entries)
+            if (isochroneCacheRef.current.size > 100) {
+              const firstKey = isochroneCacheRef.current.keys().next().value;
+              if (firstKey) {
+                isochroneCacheRef.current.delete(firstKey);
+              }
             }
+            
+            newIsochrones.set(timeMinutes, polygon);
+            
+            if (result) {
+              console.log(`Isochrone calculated for ${timeMinutes}m: ${result.totalStations} stations`);
+            }
+          } catch (err) {
+            console.error(`Error calculating isochrone for ${timeMinutes}m:`, err);
+            newIsochrones.set(timeMinutes, null);
+            // Cache the error result (null) too
+            isochroneCacheRef.current.set(cacheKey, null);
           }
-          
-          newIsochrones.set(timeMinutes, polygon);
-          
-          if (result) {
-            console.log(`Isochrone calculated for ${timeMinutes}m: ${result.totalStations} stations`);
-          }
-        } catch (err) {
-          console.error(`Error calculating isochrone for ${timeMinutes}m:`, err);
-          newIsochrones.set(timeMinutes, null);
-          // Cache the error result (null) too
-          isochroneCacheRef.current.set(cacheKey, null);
         }
-      }
 
-      setIsochrones(newIsochrones);
+        setIsochrones(newIsochrones);
+        setIsCalculatingIsochrones(false);
+      }, 50); // Small delay to ensure UI updates
+
+      return () => {
+        clearTimeout(timeoutId);
+      };
     } else {
       setIsochrones(new Map());
+      setIsCalculatingIsochrones(false);
     }
   }, [officeLocation, network, roundedTravelTimeMinutes]);
 
@@ -336,12 +346,23 @@ export function SubwayMap() {
                 <button
                   key={minutes}
                   type="button"
-                  className={`travel-time-control__button ${travelTimeMinutes === minutes ? 'travel-time-control__button--active' : ''}`}
+                  className={`travel-time-control__button ${travelTimeMinutes === minutes ? 'travel-time-control__button--active' : ''} ${isCalculatingIsochrones && travelTimeMinutes === minutes ? 'travel-time-control__button--calculating' : ''}`}
                   aria-pressed={travelTimeMinutes === minutes}
                   aria-label={`${minutes} minutes`}
-                  onClick={() => setTravelTimeMinutes(minutes)}
+                  onClick={() => {
+                    setIsCalculatingIsochrones(true);
+                    setTravelTimeMinutes(minutes);
+                  }}
+                  disabled={isCalculatingIsochrones}
                 >
-                  {minutes}m
+                  {isCalculatingIsochrones && travelTimeMinutes === minutes ? (
+                    <>
+                      <span className="travel-time-control__button-spinner"></span>
+                      <span>{minutes}m</span>
+                    </>
+                  ) : (
+                    `${minutes}m`
+                  )}
                 </button>
               ))}
             </div>
