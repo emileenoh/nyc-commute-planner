@@ -16,7 +16,8 @@ export function SubwayMap() {
   const [inputValue, setInputValue] = useState('');
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const [officeLocation, setOfficeLocation] = useState<GeocodeResult | null>(null);
-  const [travelTimeMinutes, setTravelTimeMinutes] = useState(45);
+  const DEFAULT_TRAVEL_TIME_MINUTES = 30;
+  const [travelTimeMinutes, setTravelTimeMinutes] = useState(DEFAULT_TRAVEL_TIME_MINUTES);
   const [isochrones, setIsochrones] = useState<Map<number, GeoJSON.Feature<GeoJSON.Polygon> | null>>(new Map());
   const { stations, edges, network, loading, error } = useNetworkData();
   
@@ -30,6 +31,18 @@ export function SubwayMap() {
       mapboxgl.accessToken = apiToken;
     }
   }, [apiToken]);
+
+  // Theme for SearchBox - Google Maps style pill
+  const searchBoxTheme = useMemo(() => ({
+    variables: {
+      borderRadius: '24px',
+      boxShadow: '0 2px 6px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+      colorBackground: '#fff',
+      padding: '0.875rem 1rem',
+      unit: '1rem',
+      lineHeight: '1.5',
+    },
+  }), []);
 
   // Round travel time to nearest 15 minutes for caching and calculate all isochrones up to this time
   const roundedTravelTimeMinutes = useMemo(() => {
@@ -168,22 +181,42 @@ export function SubwayMap() {
 
   return (
     <div className="subway-map-container">
-      {apiToken && (
-        <div className="subway-map-search">
-          <SearchBox
-            accessToken={apiToken}
-            mapboxgl={mapboxgl}
-            value={inputValue}
-            onChange={(value) => setInputValue(value)}
-            onRetrieve={handleRetrieve}
-            options={{
-              language: 'en',
-              country: 'US',
-              bbox: [-74.5, 40.4, -73.5, 41.0], // NYC bounding box
-            }}
-          />
+      <div className="side-panel">
+        <div className="side-panel__content">
+          <h1 className="side-panel__title">NYC Commute Planner</h1>
+          {apiToken && (
+            <div className="side-panel__search">
+              <SearchBox
+                accessToken={apiToken}
+                mapboxgl={mapboxgl}
+                value={inputValue}
+                onChange={(value) => setInputValue(value)}
+                onRetrieve={handleRetrieve}
+                placeholder="Search (eg. '123 Main St, New York, NY')"
+                theme={searchBoxTheme}
+                options={{
+                  language: 'en',
+                  country: 'US',
+                  bbox: [-74.5, 40.4, -73.5, 41.0], // NYC bounding box
+                }}
+              />
+            </div>
+          )}
+          <footer className="side-panel__footer">
+            Made with <span className="side-panel__heart">♥</span> by{' '}
+            <a
+              href="https://github.com/emileenoh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="side-panel__link"
+            >
+              emileenoh
+            </a>{' '}
+            on GitHub.
+            Feedback is welcome at <a href="mailto:emileenoh@gmail.com" className="side-panel__link">emileenoh@gmail.com</a>.
+          </footer>
         </div>
-      )}
+      </div>
       <div className="subway-map">
         <MapGL
           ref={mapRef}
@@ -290,18 +323,29 @@ export function SubwayMap() {
             })}
         </MapGL>
         {officeLocation && (
-          <div className="travel-time-control__buttons">
-            {[15, 30, 45, 60].map((minutes) => (
-              <button
-                key={minutes}
-                type="button"
-                className={`travel-time-control__button ${travelTimeMinutes === minutes ? 'travel-time-control__button--active' : ''}`}
-                onClick={() => setTravelTimeMinutes(minutes)}
-              >
-                {minutes}m
-              </button>
-            ))}
-          </div>
+          <form
+            className="travel-time-control__buttons"
+            aria-label="Travel time selection"
+            onSubmit={(e) => e.preventDefault()} // prevent form submission
+          >
+            <label id="travel-time-label" htmlFor="travel-time-group" className="travel-time-control__label">
+              Travel time:
+            </label>
+            <div id="travel-time-group" role="group" aria-labelledby="travel-time-label" className="travel-time-control__group">
+              {[15, 30, 45, 60].map((minutes) => (
+                <button
+                  key={minutes}
+                  type="button"
+                  className={`travel-time-control__button ${travelTimeMinutes === minutes ? 'travel-time-control__button--active' : ''}`}
+                  aria-pressed={travelTimeMinutes === minutes}
+                  aria-label={`${minutes} minutes`}
+                  onClick={() => setTravelTimeMinutes(minutes)}
+                >
+                  {minutes}m
+                </button>
+              ))}
+            </div>
+          </form>
         )}
       </div>
     </div>
