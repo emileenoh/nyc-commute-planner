@@ -1,0 +1,37 @@
+.address-search {
+  padding: 1rem;
+  background-color: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.address-search__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.address-search__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.address-search__input-wrapper {
+  position: relative;
+}
+
+.address-search__input-wrapper :global(mapbox-search-box) {
+  width: 100%;
+}
+
+.address-search__error {
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  color: #d32f2f;
+  background-color: #ffebee;
+  border: 1px solid #ffcdd2;
+  border-radius: 4px;
+}

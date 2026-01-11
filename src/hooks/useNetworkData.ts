@@ -9,6 +9,7 @@ import type {
 interface UseNetworkDataResult {
   stations: StationsFeatureCollection | null;
   edges: EdgesFeatureCollection | null;
+  network: ProcessedNetwork | null; // Raw network data for routing
   loading: boolean;
   error: Error | null;
 }
@@ -19,6 +20,7 @@ interface UseNetworkDataResult {
 export function useNetworkData(): UseNetworkDataResult {
   const [stations, setStations] = useState<StationsFeatureCollection | null>(null);
   const [edges, setEdges] = useState<EdgesFeatureCollection | null>(null);
+  const [network, setNetwork] = useState<ProcessedNetwork | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -38,6 +40,7 @@ export function useNetworkData(): UseNetworkDataResult {
 
         setStations(stationsGeoJSON);
         setEdges(edgesGeoJSON);
+        setNetwork(network); // Store raw network data for routing
       } catch (err) {
         setError(err instanceof Error ? err : new Error('Unknown error'));
         console.error('Error loading network data:', err);
@@ -49,6 +52,6 @@ export function useNetworkData(): UseNetworkDataResult {
     loadNetworkData();
   }, []);
 
-  return { stations, edges, loading, error };
+  return { stations, edges, network, loading, error };
 }
 

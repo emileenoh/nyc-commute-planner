@@ -7,13 +7,17 @@ import { useNetworkData } from '../hooks/useNetworkData';
 import { getRouteColor } from '../utils/routeColors';
 import type { EdgeFeature } from '../utils/geojson';
 import { SearchBox } from '@mapbox/search-js-react';
+import type { GeocodeResult } from '../types/geocoding';
+import { createIsochrone } from '../utils/isochrone';
 import './SubwayMap.scss';
 
 export function SubwayMap() {
   const mapRef = useRef<MapRef>(null);
   const [inputValue, setInputValue] = useState('');
   const markerRef = useRef<mapboxgl.Marker | null>(null);
-  const { stations, edges, loading, error } = useNetworkData();
+  const [officeLocation, setOfficeLocation] = useState<GeocodeResult | null>(null);
+  const [isochronePolygon, setIsochronePolygon] = useState<GeoJSON.Feature<GeoJSON.Polygon> | null>(null);
+  const { stations, edges, network, loading, error } = useNetworkData();
 
   const apiToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
@@ -22,6 +26,27 @@ export function SubwayMap() {
       mapboxgl.accessToken = apiToken;
     }
   }, [apiToken]);
+
+  // Calculate isochrone when office location or network changes
+  useEffect(() => {
+    if (officeLocation && network) {
+      try {
+        const result = createIsochrone(officeLocation, network);
+        if (result) {
+          setIsochronePolygon(result.polygon);
+          console.log(`Isochrone calculated: ${result.totalStations} accessible stations`);
+        } else {
+          setIsochronePolygon(null);
+          console.log('No stations accessible within time limit');
+        }
+      } catch (err) {
+        console.error('Error calculating isochrone:', err);
+        setIsochronePolygon(null);
+      }
+    } else {
+      setIsochronePolygon(null);
+    }
+  }, [officeLocation, network]);
 
   const handleRetrieve = (res: any) => {
     if (!mapRef.current) return;
@@ -40,7 +65,17 @@ export function SubwayMap() {
       
       if (coordinates && coordinates.length >= 2) {
         const [lng, lat] = coordinates;
+        const placeName = feature.properties?.full_address || feature.place_name || '';
         
+        // Store office location for isochrone calculation
+        const location: GeocodeResult = {
+          longitude: lng,
+          latitude: lat,
+          placeName,
+        };
+        setOfficeLocation(location);
+        
+        // Add marker to map
         const marker = new mapboxgl.Marker()
           .setLngLat([lng, lat])
           .addTo(map as any);
@@ -159,6 +194,36 @@ export function SubwayMap() {
                   'circle-stroke-color': '#333333',
                   'circle-stroke-width': 1,
                   'circle-opacity': 0.9,
+                }}
+              />
+            </Source>
+          )}
+
+          {/* Render isochrone polygon */}
+          {isochronePolygon && (
+            <Source
+              id="isochrone"
+              type="geojson"
+              data={{
+                type: 'FeatureCollection',
+                features: [isochronePolygon],
+              }}
+            >
+              <Layer
+                id="isochrone-fill"
+                type="fill"
+                paint={{
+                  'fill-color': '#0066cc',
+                  'fill-opacity': 0.2,
+                }}
+              />
+              <Layer
+                id="isochrone-stroke"
+                type="line"
+                paint={{
+                  'line-color': '#0066cc',
+                  'line-width': 2,
+                  'line-opacity': 0.5,
                 }}
               />
             </Source>
