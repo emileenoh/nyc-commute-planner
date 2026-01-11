@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import MapGL, { Source, Layer, MapRef } from 'react-map-gl';
 import maplibregl from 'maplibre-gl';
 import mapboxgl from 'mapbox-gl';
@@ -16,8 +16,12 @@ export function SubwayMap() {
   const [inputValue, setInputValue] = useState('');
   const markerRef = useRef<mapboxgl.Marker | null>(null);
   const [officeLocation, setOfficeLocation] = useState<GeocodeResult | null>(null);
-  const [isochronePolygon, setIsochronePolygon] = useState<GeoJSON.Feature<GeoJSON.Polygon> | null>(null);
+  const [travelTimeMinutes, setTravelTimeMinutes] = useState(45);
+  const [isochrones, setIsochrones] = useState<Map<number, GeoJSON.Feature<GeoJSON.Polygon> | null>>(new Map());
   const { stations, edges, network, loading, error } = useNetworkData();
+  
+  // Cache for isochrone results: key = "lat_lon_time" (rounded to 15 minutes)
+  const isochroneCacheRef = useRef<Map<string, GeoJSON.Feature<GeoJSON.Polygon> | null>>(new Map());
 
   const apiToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
@@ -27,26 +31,72 @@ export function SubwayMap() {
     }
   }, [apiToken]);
 
-  // Calculate isochrone when office location or network changes
+  // Round travel time to nearest 15 minutes for caching and calculate all isochrones up to this time
+  const roundedTravelTimeMinutes = useMemo(() => {
+    return Math.round(travelTimeMinutes / 15) * 15;
+  }, [travelTimeMinutes]);
+
+  // Calculate all isochrones from 15 minutes up to the selected time (in 15-minute increments)
   useEffect(() => {
     if (officeLocation && network) {
-      try {
-        const result = createIsochrone(officeLocation, network);
-        if (result) {
-          setIsochronePolygon(result.polygon);
-          console.log(`Isochrone calculated: ${result.totalStations} accessible stations`);
-        } else {
-          setIsochronePolygon(null);
-          console.log('No stations accessible within time limit');
-        }
-      } catch (err) {
-        console.error('Error calculating isochrone:', err);
-        setIsochronePolygon(null);
+      const newIsochrones = new Map<number, GeoJSON.Feature<GeoJSON.Polygon> | null>();
+      const timesToCalculate: number[] = [];
+      
+      // Generate list of times to calculate: 15, 30, 45, ... up to roundedTravelTimeMinutes
+      for (let time = 15; time <= roundedTravelTimeMinutes; time += 15) {
+        timesToCalculate.push(time);
       }
+
+      // Calculate or retrieve from cache for each time
+      for (const timeMinutes of timesToCalculate) {
+        const cacheKey = `${officeLocation.latitude.toFixed(6)}_${officeLocation.longitude.toFixed(6)}_${timeMinutes}`;
+        
+        // Check cache first
+        const cached = isochroneCacheRef.current.get(cacheKey);
+        if (cached !== undefined) {
+          newIsochrones.set(timeMinutes, cached);
+          continue;
+        }
+
+        // Calculate if not in cache
+        try {
+          const result = createIsochrone(officeLocation, network, timeMinutes * 60);
+          const polygon = result?.polygon || null;
+          
+          // Cache the result
+          isochroneCacheRef.current.set(cacheKey, polygon);
+          
+          // Limit cache size to prevent memory issues (keep last 100 entries)
+          if (isochroneCacheRef.current.size > 100) {
+            const firstKey = isochroneCacheRef.current.keys().next().value;
+            if (firstKey) {
+              isochroneCacheRef.current.delete(firstKey);
+            }
+          }
+          
+          newIsochrones.set(timeMinutes, polygon);
+          
+          if (result) {
+            console.log(`Isochrone calculated for ${timeMinutes}m: ${result.totalStations} stations`);
+          }
+        } catch (err) {
+          console.error(`Error calculating isochrone for ${timeMinutes}m:`, err);
+          newIsochrones.set(timeMinutes, null);
+          // Cache the error result (null) too
+          isochroneCacheRef.current.set(cacheKey, null);
+        }
+      }
+
+      setIsochrones(newIsochrones);
     } else {
-      setIsochronePolygon(null);
+      setIsochrones(new Map());
     }
-  }, [officeLocation, network]);
+  }, [officeLocation, network, roundedTravelTimeMinutes]);
+
+  // Single color for all isochrones
+  const getColor = useCallback((): string => {
+    return 'rgb(0, 102, 204)'; // Single blue color for all polygons
+  }, []);
 
   const handleRetrieve = (res: any) => {
     if (!mapRef.current) return;
@@ -199,36 +249,60 @@ export function SubwayMap() {
             </Source>
           )}
 
-          {/* Render isochrone polygon */}
-          {isochronePolygon && (
-            <Source
-              id="isochrone"
-              type="geojson"
-              data={{
-                type: 'FeatureCollection',
-                features: [isochronePolygon],
-              }}
-            >
-              <Layer
-                id="isochrone-fill"
-                type="fill"
-                paint={{
-                  'fill-color': '#0066cc',
-                  'fill-opacity': 0.2,
-                }}
-              />
-              <Layer
-                id="isochrone-stroke"
-                type="line"
-                paint={{
-                  'line-color': '#0066cc',
-                  'line-width': 2,
-                  'line-opacity': 0.5,
-                }}
-              />
-            </Source>
-          )}
+          {/* Render isochrone polygons - render longest time first (behind), shortest time last (on top) */}
+          {Array.from(isochrones.entries())
+            .sort((a, b) => b[0] - a[0]) // Sort by time descending (longest first)
+            .map(([timeMinutes, polygon]) => {
+              if (!polygon) return null;
+              
+              const fillColor = getColor();
+              // Use the same color for the stroke
+              const strokeColor = fillColor;
+              return (
+                <Source
+                  key={`isochrone-${timeMinutes}m`}
+                  id={`isochrone-${timeMinutes}m`}
+                  type="geojson"
+                  data={{
+                    type: 'FeatureCollection',
+                    features: [polygon],
+                  }}
+                >
+                  <Layer
+                    id={`isochrone-${timeMinutes}m-fill`}
+                    type="fill"
+                    paint={{
+                      'fill-color': fillColor,
+                      'fill-opacity': 0.35, // Reduced opacity to see map features behind
+                    }}
+                  />
+                  <Layer
+                    id={`isochrone-${timeMinutes}m-stroke`}
+                    type="line"
+                    paint={{
+                      'line-color': strokeColor,
+                      'line-width': 2,
+                      'line-opacity': 0.5,
+                    }}
+                  />
+                </Source>
+              );
+            })}
         </MapGL>
+        {officeLocation && (
+          <div className="travel-time-control__buttons">
+            {[15, 30, 45, 60].map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                className={`travel-time-control__button ${travelTimeMinutes === minutes ? 'travel-time-control__button--active' : ''}`}
+                onClick={() => setTravelTimeMinutes(minutes)}
+              >
+                {minutes}m
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
