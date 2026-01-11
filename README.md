@@ -1,17 +1,17 @@
 # NYC Commute Planner
 
-Live demo hosted on Vercel: [https://nyc-commute-planner-zkrm.vercel.app/](https://nyc-commute-planner-zkrm.vercel.app/)
+Live demo hosted on Vercel: [https://nyc-commute-planner.vercel.app/](https://nyc-commute-planner.vercel.app/)
 
 An interactive map visualization of the NYC subway network, built with React and MapLibre GL.
 
 ## Tech Stack
 
-- **Frontend**: React + TypeScript, Vite, MapLibre GL (via react-map-gl)
-- **Data Processing**: Node.js/TypeScript preprocessing script that converts GTFS data into a network graph
-- **Data Source**: Public GTFS data from [MTA](https://new.mta.info/developers) (Metropolitan Transportation Authority)
-- **Deployment**: Vercel
+For this project, I imported [publicly available GTFS data] published by the MTA. The data is preprocessed with Node.js and converted into a GeoJSON graph consumed by the frontend. The frontend is built with React + TypeScript and MapLibre GL (via react-map-gl), and the whole app is hosted on vanilla Vercel.
 
-The preprocessing script processes raw GTFS files (stops, routes, trips, stop_times) to create a simplified network representation with stations and edges (travel times between consecutive stations), which is then loaded by the frontend for visualization.
+## Calculating distance
+
+The app calculates distance by using the coordinates of each subway station and the office location selected on the map. It uses geographic data to compute the shortest travel paths along the subway network rather than direct ("as-the-crow-flies") distance. When you choose a travel time, the app generates "isochrones" — polygons that show all areas reachable from the chosen location within that time limit, based on traveling through the subway lines and walking, not just straight-line distance.
+
 
 ## Getting Started
 
